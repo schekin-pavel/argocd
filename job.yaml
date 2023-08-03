@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kubectl-job
+spec:
+  template:
+    spec:
+      serviceAccountName: service1 
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+      - name: kubectl-container
+        image: ghcr.io/schekin-pavel/kubectl:latest
+        command:
+        - "bash"
+        - "-c"
+        - |
+          SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) && \
+          API_SERVER=$(cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt | base64 -w 0) && \
+          KUBECONFIG_PATH=/tmp/kubeconfig && \
+          cat > $KUBECONFIG_PATH <<EOF
+          apiVersion: v1
+          kind: Config
+          clusters:
+          - cluster:
+              certificate-authority-data: $API_SERVER
+              server: https://kubernetes.default.svc
+            name: cluster
+          contexts:
+          - context:
+              cluster: cluster
+              user: service-account
+            name: context
+          current-context: context
+          users:
+          - name: service-account
+            user:
+              token: $SA_TOKEN
+          EOF
+          export KUBECONFIG=$KUBECONFIG_PATH && \
+          kubectl delete secrets service1
+      restartPolicy: Never
+  backoffLimit: 4
